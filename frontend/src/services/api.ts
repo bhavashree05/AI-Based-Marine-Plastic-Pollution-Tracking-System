@@ -9,7 +9,9 @@ import {
   AlertItem,
   HistoricalTrendsResponse,
   DatasetInspectionReport,
-  CleaningResult
+  CleaningResult,
+  TNDistrictSummary,
+  TNOverview
 } from '../types';
 
 // In local development, defaults to '/api' (proxied via Vite).
@@ -69,6 +71,13 @@ export async function fetchMapMarkers(params?: {
   category?: string;
   marine_setting?: string;
   source_type?: string;
+  country?: string;
+  state?: string;
+  district?: string;
+  min_lat?: number;
+  max_lat?: number;
+  min_lon?: number;
+  max_lon?: number;
   year_from?: number;
   year_to?: number;
   search?: string;
@@ -80,6 +89,13 @@ export async function fetchMapMarkers(params?: {
   if (params?.category) query.append('category', params.category);
   if (params?.marine_setting) query.append('marine_setting', params.marine_setting);
   if (params?.source_type) query.append('source_type', params.source_type);
+  if (params?.country) query.append('country', params.country);
+  if (params?.state) query.append('state', params.state);
+  if (params?.district) query.append('district', params.district);
+  if (params?.min_lat !== undefined) query.append('min_lat', String(params.min_lat));
+  if (params?.max_lat !== undefined) query.append('max_lat', String(params.max_lat));
+  if (params?.min_lon !== undefined) query.append('min_lon', String(params.min_lon));
+  if (params?.max_lon !== undefined) query.append('max_lon', String(params.max_lon));
   if (params?.year_from) query.append('year_from', String(params.year_from));
   if (params?.year_to) query.append('year_to', String(params.year_to));
   if (params?.search) query.append('search', params.search);
@@ -87,6 +103,18 @@ export async function fetchMapMarkers(params?: {
 
   const res = await fetch(`${API_BASE}/observations/map-markers?${query.toString()}`);
   if (!res.ok) throw new Error('Failed to fetch map coordinates');
+  return res.json();
+}
+
+export async function fetchTNDistrictsSummary(): Promise<TNDistrictSummary[]> {
+  const res = await fetch(`${API_BASE}/observations/tamil-nadu/districts`);
+  if (!res.ok) throw new Error('Failed to fetch Tamil Nadu district summaries');
+  return res.json();
+}
+
+export async function fetchTNOverview(): Promise<TNOverview> {
+  const res = await fetch(`${API_BASE}/observations/tamil-nadu/overview`);
+  if (!res.ok) throw new Error('Failed to fetch Tamil Nadu overview');
   return res.json();
 }
 

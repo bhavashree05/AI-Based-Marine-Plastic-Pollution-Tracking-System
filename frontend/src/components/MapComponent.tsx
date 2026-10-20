@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapMarker } from '../types';
+import { MapMarker, TNDistrictSummary } from '../types';
 import {
   Layers,
   Maximize2,
@@ -13,7 +13,8 @@ import {
   AlertCircle,
   Calendar,
   Compass,
-  CheckCircle2
+  CheckCircle2,
+  Map as MapIcon
 } from 'lucide-react';
 
 interface MapComponentProps {
@@ -26,6 +27,11 @@ interface MapComponentProps {
   onScheduleCleanup?: (marker: MapMarker) => void;
   onInspectMarker?: (marker: MapMarker) => void;
   interactiveSelect?: boolean;
+  geoJsonData?: any;
+  selectedDistrict?: string | null;
+  onSelectDistrict?: (districtName: string) => void;
+  mapMode?: 'world' | 'tamilnadu';
+  tnDistrictsData?: Record<string, TNDistrictSummary>;
 }
 
 // Optional custom tile layer (e.g. Mapbox, Stadia Maps) or public defaults
@@ -45,10 +51,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onScheduleCleanup,
   onInspectMarker,
   interactiveSelect = false,
+  geoJsonData,
+  selectedDistrict = null,
+  onSelectDistrict,
+  mapMode = 'world',
+  tnDistrictsData = {},
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
   const canvasRendererRef = useRef<L.Canvas | null>(null);
 
   const [activeTileLayer, setActiveTileLayer] = useState<'dark' | 'osm'>('dark');
@@ -290,6 +302,115 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     }
   }, [validMarkers, viewMode]);
 
+  // Render or update GeoJSON layer (for Tamil Nadu districts)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
+
+    // Clean up previous GeoJSON layer if any
+    if (geoJsonLayerRef.current) {
+      map.removeLayer(geoJsonLayerRef.current);
+      geoJsonLayerRef.current = null;
+    }
+
+    if (mapMode === 'tamilnadu' && geoJsonData) {
+      const geoLayer = L.geoJSON(geoJsonData, {
+        style: (feature) => {
+          const districtName = feature?.properties?.district;
+          const isSelected = selectedDistrict && selectedDistrict.toLowerCase() === districtName?.toLowerCase();
+          const summary = tnDistrictsData?.[districtName];
+
+          if (isSelected) {
+            return {
+              color: '#2dd4bf',
+              weight: 3.5,
+              opacity: 1,
+              fillColor: '#0d9488',
+              fillOpacity: 0.45,
+            };
+          }
+
+          if (summary?.is_coastal) {
+            const risk = summary.risk_level;
+            const fillCol = risk === 'CRITICAL' ? '#f43f5e' : risk === 'HIGH' ? '#f97316' : risk === 'MEDIUM' ? '#fbbf24' : '#10b981';
+            return {
+              color: fillCol,
+              weight: 2,
+              opacity: 0.9,
+              fillColor: fillCol,
+              fillOpacity: 0.22,
+            };
+          }
+
+          return {
+            color: '#475569',
+            weight: 1,
+            opacity: 0.5,
+            fillColor: '#1e293b',
+            fillOpacity: 0.1,
+          };
+        },
+        onEachFeature: (feature, layer) => {
+          const districtName = feature?.properties?.district;
+          const summary = tnDistrictsData?.[districtName];
+          const risk = summary?.risk_level || 'LOW';
+          const riskColor = risk === 'CRITICAL' ? '#f43f5e' : risk === 'HIGH' ? '#f97316' : risk === 'MEDIUM' ? '#fbbf24' : '#10b981';
+
+          const tooltipContent = `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 11px; padding: 3px 5px; line-height: 1.4;">
+              <strong style="color: #38bdf8; font-size: 12px;">${districtName}</strong> ${summary?.is_coastal ? '<span style="color: #2dd4bf; font-size: 10px; font-weight: 700;">🌊 Coastal</span>' : '<span style="color: #94a3b8; font-size: 10px;">🏞️ Inland</span>'}
+              <br/>
+              <span style="color: #cbd5e1;">Pollution Risk:</span> <strong style="color: ${riskColor};">${risk}</strong>
+              ${summary ? `<br/><span style="color: #cbd5e1;">Survey Points:</span> <b>${summary.observation_count}</b>` : ''}
+              ${summary?.dominant_debris ? `<br/><span style="color: #94a3b8; font-size: 9.5px;">Debris: ${summary.dominant_debris.substring(0, 35)}...</span>` : ''}
+            </div>
+          `;
+
+          layer.bindTooltip(tooltipContent, {
+            sticky: true,
+            opacity: 0.95
+          });
+
+          layer.on({
+            mouseover: (e) => {
+              const l = e.target;
+              if (selectedDistrict?.toLowerCase() !== districtName?.toLowerCase()) {
+                l.setStyle({ weight: 2.8, opacity: 1, fillOpacity: 0.35 });
+              }
+            },
+            mouseout: (e) => {
+              if (geoJsonLayerRef.current) {
+                geoJsonLayerRef.current.resetStyle(e.target);
+              }
+            },
+            click: (e) => {
+              L.DomEvent.stopPropagation(e);
+              if (onSelectDistrict) {
+                onSelectDistrict(districtName);
+              }
+              if (layer && typeof (layer as any).getBounds === 'function') {
+                map.fitBounds((layer as any).getBounds(), { padding: [50, 50], maxZoom: 10 });
+              }
+            }
+          });
+        }
+      });
+
+      geoLayer.addTo(map);
+      geoJsonLayerRef.current = geoLayer;
+
+      // Ensure polygon fills stay behind markers
+      geoLayer.bringToBack();
+    }
+
+    return () => {
+      if (geoJsonLayerRef.current && mapInstanceRef.current) {
+        mapInstanceRef.current.removeLayer(geoJsonLayerRef.current);
+        geoJsonLayerRef.current = null;
+      }
+    };
+  }, [mapMode, geoJsonData, selectedDistrict, tnDistrictsData]);
+
   // Toggle Tile Layer (Street Map vs Dark Marine)
   const toggleLayer = () => {
     if (!mapInstanceRef.current) return;
@@ -327,14 +448,22 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     }
   };
 
-  // Reset to Extent: Fit all valid markers into view
+  // Reset to Extent: Fit all valid markers into view, or reset to Tamil Nadu/World view
   const handleResetExtent = () => {
     if (!mapInstanceRef.current) return;
-    if (validMarkers.length > 0) {
-      const bounds = L.latLngBounds(validMarkers.map((m) => [m.latitude, m.longitude]));
-      mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 8 });
+    if (mapMode === 'tamilnadu') {
+      if (geoJsonLayerRef.current) {
+        mapInstanceRef.current.fitBounds(geoJsonLayerRef.current.getBounds(), { padding: [30, 30] });
+      } else {
+        mapInstanceRef.current.setView([10.8, 78.8], 7.2);
+      }
     } else {
-      mapInstanceRef.current.setView([20.0, -20.0], 2.5);
+      if (validMarkers.length > 0) {
+        const bounds = L.latLngBounds(validMarkers.map((m) => [m.latitude, m.longitude]));
+        mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 8 });
+      } else {
+        mapInstanceRef.current.setView([20.0, -20.0], 2.5);
+      }
     }
   };
 
@@ -457,30 +586,36 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       )}
 
       {/* Bottom Severity Legend */}
-      <div className="absolute bottom-4 left-4 z-[1000] p-2.5 rounded-xl bg-slate-950/90 border border-slate-800/90 backdrop-blur-md shadow-2xl text-[11px] text-slate-300 space-y-1.5">
+      <div className="absolute bottom-4 left-4 z-[1000] p-2.5 rounded-xl bg-slate-950/90 border border-slate-800/90 backdrop-blur-md shadow-2xl text-[11px] text-slate-300 space-y-1.5 max-w-[220px]">
         <div className="font-semibold text-slate-400 text-[10px] tracking-wider uppercase mb-1 flex items-center justify-between gap-3">
           <div className="flex items-center gap-1">
             <ShieldAlert className="w-3 h-3 text-teal-400" />
-            <span>Severity Scale</span>
+            <span>{mapMode === 'tamilnadu' ? 'TN District Risk' : 'Severity Scale'}</span>
           </div>
           <span className="font-mono text-teal-400 font-bold">{validMarkers.length.toLocaleString()} pts</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm shadow-rose-500/50 animate-pulse" />
-          <span>Critical (&gt;75)</span>
+          <span>Critical Risk (&gt;75)</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow-sm shadow-orange-500/50" />
-          <span>High (50 - 75)</span>
+          <span>High Risk (50 - 75)</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50" />
-          <span>Medium (25 - 50)</span>
+          <span>Medium Risk (25 - 50)</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
-          <span>Low (&lt;25)</span>
+          <span>Low Risk (&lt;25)</span>
         </div>
+        {mapMode === 'tamilnadu' && (
+          <div className="pt-1.5 mt-1 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-teal-500/40 border border-teal-400" /> Selected</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-slate-800 border border-slate-600" /> Inland</span>
+          </div>
+        )}
       </div>
     </div>
   );

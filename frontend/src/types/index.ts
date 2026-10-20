@@ -30,7 +30,9 @@ export interface MapMarker {
   longitude: number;
   ocean?: string;
   region?: string;
+  subregion?: string;
   country?: string;
+  state?: string;
   marine_setting?: string;
   measurement?: number;
   unit?: string;
@@ -42,6 +44,29 @@ export interface MapMarker {
   organization?: string;
   verified_status?: string;
   notes?: string;
+}
+
+export interface TNDistrictSummary {
+  district_name: string;
+  is_coastal: boolean;
+  coastal_zone: string;
+  coastal_length_km: number;
+  observation_count: number;
+  avg_severity: number;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  dominant_debris: string;
+  major_waterways: string;
+}
+
+export interface TNOverview {
+  total_coastline_km: number;
+  coastal_districts_count: number;
+  total_districts_count: number;
+  total_observations: number;
+  average_severity: number;
+  critical_hotspots_count: number;
+  top_polluted_coastal_zones: string[];
+  research_provenance: string;
 }
 
 export interface DetectedObject {

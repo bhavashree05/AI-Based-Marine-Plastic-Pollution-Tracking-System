@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.database import init_db
 from backend.app.core.config import UPLOAD_DIR, ANNOTATED_DIR, CLEANED_DIR, REPORTS_DIR
-from backend.app.services.data_processor import seed_database_from_noaa
+from backend.app.services.data_processor import seed_database_from_noaa, seed_tamil_nadu_coastal_observations
 from backend.app.services.hotspot_engine import cluster_and_prioritize_hotspots
 
 # Import API Routers
@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI):
 
     print("[MarineGuard] Checking NOAA baseline dataset...")
     seeded = seed_database_from_noaa()
-    print(f"[MarineGuard] Database active with {seeded} validated observations.")
+    tn_seeded = seed_tamil_nadu_coastal_observations()
+    print(f"[MarineGuard] Database active with {seeded} validated observations ({tn_seeded} TN coastal stations).")
 
     print("[MarineGuard] Running initial spatial hotspot prioritization...")
     try:

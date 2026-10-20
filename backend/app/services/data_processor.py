@@ -198,8 +198,9 @@ def seed_database_from_noaa(limit: Optional[int] = None, force_reseed: bool = Fa
     cursor.execute("SELECT COUNT(*) as cnt FROM observations WHERE source_type = 'NOAA_DATASET'")
     existing_noaa_count = cursor.fetchone()['cnt']
     
-    # If already seeded with more than 5000 rows and reseed not forced, skip
+    # If already seeded with more than 5000 rows and reseed not forced, ensure TN is seeded and return
     if existing_noaa_count >= 5000 and not force_reseed:
+        seed_tamil_nadu_coastal_observations(conn)
         cursor.execute("SELECT COUNT(*) as total FROM observations")
         total_obs = cursor.fetchone()['total']
         conn.close()
